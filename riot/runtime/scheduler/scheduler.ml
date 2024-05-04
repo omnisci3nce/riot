@@ -31,6 +31,7 @@ type pool = {
   mutable status : int;
   io_scheduler : io;
   schedulers : t list;
+  blocking_processes : unit Domain.t list Atomic.t;
   processes : Proc_table.t;
   mutable proc_count : int;
   registry : Proc_registry.t;
@@ -49,6 +50,7 @@ let shutdown pool status =
   List.iter wake_up_scheduler pool.schedulers
 
 module Scheduler = struct
+  (* JOSH: I'm going to want to call this function to spin up my blocking process on *)
   let make ~rnd () =
     let uid = Uid.next () in
     Log.debug (fun f -> f "Making scheduler with id: %a" Uid.pp uid);
@@ -94,6 +96,15 @@ module Scheduler = struct
         if Scheduler_uid.equal sch.uid (Atomic.get proc.sid) then
           add_to_run_queue sch proc)
       pool.schedulers
+
+  let kickstart_blocking_process pool sch (proc : Process.t) =
+    add_to_run_queue sch proc;
+    pool.schedulers
+    (* List.iter
+      (fun (sch : t) ->
+        if Scheduler_uid.equal sch.uid (Atomic.get proc.sid) then
+          add_to_run_queue sch proc)
+      pool.schedulers *)
 
   let handle_receive k pool sch (proc : Process.t) (ref : 'a Ref.t option)
       timeout =
@@ -520,6 +531,31 @@ module Pool = struct
        sockets and handle that as a regular value rather than as a signal. *)
     Sys.set_signal Sys.sigpipe Sys.Signal_ignore
 
+  let spawn_blocking_scheduler ?(rnd = Random.State.make_self_init ()) pool =
+    (* Creates a new scheduler, places it into a domain, and updates the pool to reflect this *)
+    let new_scheduler = Scheduler.make ~rnd () in
+    let spawn (scheduler : t) =
+      Stdlib.Domain.spawn (fun () ->
+        print_endline "Spawned a new process";
+          setup ();
+          set_pool pool;
+          Scheduler.set_current_scheduler scheduler;
+          try
+            Scheduler.run pool scheduler ();
+            Log.trace (fun f ->
+                f "<<< shutting down scheduler #%a" Scheduler_uid.pp
+                  scheduler.uid)
+          with exn ->
+            Log.error (fun f ->
+                f "Scheduler.run exception: %s due to: %s%!"
+                  (Printexc.to_string exn)
+                  (Printexc.raw_backtrace_to_string
+                     (Printexc.get_raw_backtrace ())));
+            shutdown pool 1)
+    in
+    let _domain = spawn new_scheduler in
+    new_scheduler
+
   let make ?(rnd = Random.State.make_self_init ()) ~domains ~main () =
     setup ();
 
@@ -534,6 +570,7 @@ module Pool = struct
         proc_count = 0;
         io_scheduler;
         schedulers = [ main ] @ schedulers;
+        blocking_processes = Atomic.make [];
         processes = Proc_table.create ();
         registry = Proc_registry.create ();
       }
@@ -556,7 +593,8 @@ module Pool = struct
                      (Printexc.get_raw_backtrace ())));
             shutdown pool 1)
     in
-    Log.debug (fun f -> f "Created %d schedulers" (List.length schedulers));
+    Log.debug (fun f ->
+        f "Created %d schedulers excluding main" (List.length schedulers));
 
     let io_thread =
       Stdlib.Domain.spawn (fun () ->

@@ -9,8 +9,10 @@ let rec loop pid msg n =
     loop pid msg (n - 1))
 
 let main () =
+  Runtime.set_log_level (Some Debug);
+
   let _ = Logger.start () |> Result.get_ok in
-  Logger.set_log_level (Some Info);
+  Logger.set_log_level (Some Trace);
   let this = self () in
 
   let _ =

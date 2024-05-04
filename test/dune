@@ -111,6 +111,12 @@
 
 (test
  (package riot)
+ (name blocking_process_test)
+ (modules blocking_process_test)
+ (libraries riot))
+
+(test
+ (package riot)
  (name link_processes_test)
  (modules link_processes_test)
  (libraries riot))

@@ -14,6 +14,9 @@ let shutdown ?(status = 0) () =
 let started = ref false
 
 let run ?(rnd = Random.State.make_self_init ()) ?workers main =
+
+  Runtime.set_log_level (Some Debug);
+
   if !started then raise Riot_already_started else started := true;
 
   let max_workers = Int.max 0 (Stdlib.Domain.recommended_domain_count () - 2) in

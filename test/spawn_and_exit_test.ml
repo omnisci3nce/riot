@@ -8,7 +8,7 @@ let rec loop () =
 
 let main () =
   let (Ok _) = Logger.start () in
-
+  print_endline "test";
   (* spin up and wait for 1 second before terminating *)
   let pid1 = spawn (fun () -> loop ()) in
 
@@ -23,5 +23,7 @@ let main () =
   shutdown ()
 
 let () =
-  Logger.set_log_level (Some Info);
-  Riot.run @@ main
+  Logger.set_log_level (Some Debug);
+  Riot.run @@ main;
+  flush_all ()
+

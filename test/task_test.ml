@@ -11,7 +11,7 @@ let rec count_to x n =
 let () =
   Riot.run @@ fun () ->
   let _ = Logger.start () |> Result.get_ok in
-  Logger.set_log_level (Some Info);
+  Logger.set_log_level (Some Trace);
 
   let task = Task.async (fun () -> count_to 0 1_000) in
 
